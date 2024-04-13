@@ -17,8 +17,9 @@ const (
 )
 
 const (
-	PATH_EMPTY = "/"
-	PATH_ECHO  = "echo"
+	PATH_EMPTY      = "/"
+	PATH_ECHO       = "echo"
+	PATH_USER_AGENT = "user-agent"
 )
 
 type request struct {
@@ -44,9 +45,13 @@ func parseReq(query []byte) request {
 		if token == "" {
 			break
 		}
+
 		header := strings.SplitN(token, ":", 2)
 		key := strings.ToLower(header[0])
-		val := strings.ToLower(header[1])
+		key = strings.TrimSpace(key)
+		val := header[1]
+		val = strings.TrimSpace(val)
+
 		parsedReq.headers[key] = val
 	}
 
@@ -58,7 +63,7 @@ func ansReq(conn net.Conn, req request) {
 
 	path := strings.Trim(req.URI, "/")
 	tokens := strings.SplitN(path, "/", 2)
-	reqType := strings.ToLower(tokens[0])
+	pathType := strings.ToLower(tokens[0])
 
 	fmt.Println(req.URI)
 	fmt.Println(fmt.Sprintf("path: %s, tokens: %s, its len: %d", path, tokens, len(tokens)))
@@ -67,8 +72,9 @@ func ansReq(conn net.Conn, req request) {
 		if req.URI == PATH_EMPTY {
 			resp.WriteString(RESPONSE_200)
 		} else {
-			switch reqType {
+			switch pathType {
 			case PATH_ECHO:
+				fmt.Println("echo case")
 				reqData := tokens[1]
 				resp.WriteString("HTTP/1.1 200 OK\r\n")
 				resp.WriteString("Content-Type: text/plain\r\n")
@@ -77,7 +83,18 @@ func ansReq(conn net.Conn, req request) {
 				resp.WriteString("\r\n\r\n")
 				resp.WriteString(reqData)
 				resp.WriteString("\r\n\r\n")
+			case PATH_USER_AGENT:
+				fmt.Println("user-agent case")
+				data := req.headers[PATH_USER_AGENT]
+				resp.WriteString("HTTP/1.1 200 OK\r\n")
+				resp.WriteString("Content-Type: text/plain\r\n")
+				resp.WriteString("Content-Length: ")
+				resp.WriteString(fmt.Sprint(len(data)))
+				resp.WriteString("\r\n\r\n")
+				resp.WriteString(data)
+				resp.WriteString("\r\n\r\n")
 			default:
+				fmt.Println("default case")
 				resp.WriteString(RESPONSE_404)
 			}
 		}
