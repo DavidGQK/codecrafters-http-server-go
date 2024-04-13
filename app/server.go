@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"io"
 	"net"
 	"os"
 	"strings"
@@ -18,7 +17,7 @@ const (
 )
 
 const (
-	PATH_EMPTY = "empty"
+	PATH_EMPTY = "/"
 	PATH_ECHO  = "echo"
 )
 
@@ -36,7 +35,7 @@ func parseReq(query []byte) request {
 
 	parsedReq := request{
 		method:          strings.ToLower(reqInfo[0]),
-		URI:             strings.ToLower(reqInfo[1]),
+		URI:             reqInfo[1],
 		protocolVersion: strings.ToLower(reqInfo[2]),
 		headers:         make(map[string]string),
 	}
@@ -58,22 +57,29 @@ func ansReq(conn net.Conn, req request) {
 	var resp strings.Builder
 
 	path := strings.Trim(req.URI, "/")
-	tokens := strings.Split(path, "/")
-	firstToken := strings.ToLower(tokens[0])
+	tokens := strings.SplitN(path, "/", 2)
+	reqType := strings.ToLower(tokens[0])
+
+	fmt.Println(req.URI)
+	fmt.Println(fmt.Sprintf("path: %s, tokens: %s, its len: %d", path, tokens, len(tokens)))
 
 	if req.method == GET_METHOD {
-		switch firstToken {
-		case PATH_EMPTY:
+		if req.URI == PATH_EMPTY {
 			resp.WriteString(RESPONSE_200)
-		case PATH_ECHO:
-			resp.WriteString(RESPONSE_200)
-			resp.WriteString("Content-Type: text/plain\r\n")
-			resp.WriteString("Content-Length: ")
-			resp.WriteString(fmt.Sprint(len(firstToken)))
-			resp.WriteString("\r\n\r\n")
-			resp.WriteString(firstToken)
-		default:
-			resp.WriteString(RESPONSE_404)
+		} else {
+			switch reqType {
+			case PATH_ECHO:
+				reqData := tokens[1]
+				resp.WriteString("HTTP/1.1 200 OK\r\n")
+				resp.WriteString("Content-Type: text/plain\r\n")
+				resp.WriteString("Content-Length: ")
+				resp.WriteString(fmt.Sprint(len(reqData)))
+				resp.WriteString("\r\n\r\n")
+				resp.WriteString(reqData)
+				resp.WriteString("\r\n\r\n")
+			default:
+				resp.WriteString(RESPONSE_404)
+			}
 		}
 	}
 
@@ -81,25 +87,25 @@ func ansReq(conn net.Conn, req request) {
 	if err != nil {
 		fmt.Println("Error answering request:", err.Error())
 	}
+
+	fmt.Println(resp.String())
 }
 
 func handleConnection(conn net.Conn) {
-	defer conn.Close()
 
-	for {
-		buf := make([]byte, 1024)
-		n, err := conn.Read(buf)
-		if err != nil {
-			if err == io.EOF {
-				continue
-			}
-			fmt.Println("Error handling connection:", err.Error())
-			return
-		}
-
-		res := parseReq(buf[:n])
-		ansReq(conn, res)
+	buf := make([]byte, 1024)
+	n, err := conn.Read(buf)
+	if err != nil {
+		//if err == io.EOF {
+		//	continue
+		//}
+		fmt.Println("Error handling connection:", err.Error())
+		return
 	}
+
+	res := parseReq(buf[:n])
+	ansReq(conn, res)
+	defer conn.Close()
 }
 
 func main() {
