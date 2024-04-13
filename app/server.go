@@ -13,6 +13,15 @@ const (
 	RESPONSE_404 = "HTTP/1.1 404 Not Found\r\n\r\n"
 )
 
+const (
+	GET_METHOD = "get"
+)
+
+const (
+	PATH_EMPTY = "empty"
+	PATH_ECHO  = "echo"
+)
+
 type request struct {
 	method          string
 	URI             string
@@ -26,9 +35,9 @@ func parseReq(query []byte) request {
 	reqInfo := strings.Split(tokens[0], " ")
 
 	parsedReq := request{
-		method:          reqInfo[0],
-		URI:             reqInfo[1],
-		protocolVersion: reqInfo[2],
+		method:          strings.ToLower(reqInfo[0]),
+		URI:             strings.ToLower(reqInfo[1]),
+		protocolVersion: strings.ToLower(reqInfo[2]),
 		headers:         make(map[string]string),
 	}
 
@@ -37,22 +46,38 @@ func parseReq(query []byte) request {
 			break
 		}
 		header := strings.SplitN(token, ":", 2)
-		fmt.Println(header)
-		parsedReq.headers[header[0]] = header[1]
+		key := strings.ToLower(header[0])
+		val := strings.ToLower(header[1])
+		parsedReq.headers[key] = val
 	}
 
 	return parsedReq
 }
 
 func ansReq(conn net.Conn, req request) {
-	var resp string
-	if req.URI == "/" {
-		resp = RESPONSE_200
-	} else {
-		resp = RESPONSE_404
+	var resp strings.Builder
+
+	path := strings.Trim(req.URI, "/")
+	tokens := strings.Split(path, "/")
+	firstToken := strings.ToLower(tokens[0])
+
+	if req.method == GET_METHOD {
+		switch firstToken {
+		case PATH_EMPTY:
+			resp.WriteString(RESPONSE_200)
+		case PATH_ECHO:
+			resp.WriteString(RESPONSE_200)
+			resp.WriteString("Content-Type: text/plain\r\n")
+			resp.WriteString("Content-Length: ")
+			resp.WriteString(fmt.Sprint(len(firstToken)))
+			resp.WriteString("\r\n\r\n")
+			resp.WriteString(firstToken)
+		default:
+			resp.WriteString(RESPONSE_404)
+		}
 	}
 
-	_, err := conn.Write([]byte(resp))
+	_, err := conn.Write([]byte(resp.String()))
 	if err != nil {
 		fmt.Println("Error answering request:", err.Error())
 	}
