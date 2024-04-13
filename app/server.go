@@ -65,8 +65,8 @@ func ansReq(conn net.Conn, req request) {
 	tokens := strings.SplitN(path, "/", 2)
 	pathType := strings.ToLower(tokens[0])
 
-	fmt.Println(req.URI)
-	fmt.Println(fmt.Sprintf("path: %s, tokens: %s, its len: %d", path, tokens, len(tokens)))
+	//fmt.Println(req.URI)
+	//fmt.Println(fmt.Sprintf("path: %s, tokens: %s, its len: %d", path, tokens, len(tokens)))
 
 	if req.method == GET_METHOD {
 		if req.URI == PATH_EMPTY {
@@ -113,9 +113,6 @@ func handleConnection(conn net.Conn) {
 	buf := make([]byte, 1024)
 	n, err := conn.Read(buf)
 	if err != nil {
-		//if err == io.EOF {
-		//	continue
-		//}
 		fmt.Println("Error handling connection:", err.Error())
 		return
 	}
