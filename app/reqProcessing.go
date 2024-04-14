@@ -1,18 +1,23 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"net"
 	"strings"
 )
 
 const (
-	RESPONSE_200 = "HTTP/1.1 200 OK\r\n\r\n"
-	RESPONSE_404 = "HTTP/1.1 404 Not Found\r\n\r\n"
+	RESPONSE_200 = "HTTP/1.1 200 OK\r\n"
+	RESPONSE_201 = "HTTP/1.1 201 OK\r\n"
+	RESPONSE_404 = "HTTP/1.1 404 Not Found\r\n"
+	SEP          = "\r\n"
+	DOUBLE_SEP   = "\r\n\r\n"
 )
 
 const (
-	GET_METHOD = "get"
+	GET_METHOD  = "get"
+	POST_METHOD = "post"
 )
 
 const (
@@ -27,26 +32,33 @@ type request struct {
 	URI             string
 	protocolVersion string
 	headers         map[string]string
+	body            []byte
 }
 
 func parseReq(query []byte) request {
-	tokens := strings.Split(string(query), "\r\n")
-
-	reqInfo := strings.Split(tokens[0], " ")
+	tokens := bytes.Split(query, []byte("\r\n"))
+	reqInfo := bytes.Split(tokens[0], []byte(" "))
 
 	parsedReq := request{
-		method:          strings.ToLower(reqInfo[0]),
-		URI:             reqInfo[1],
-		protocolVersion: strings.ToLower(reqInfo[2]),
+		method:          strings.ToLower(string(reqInfo[0])),
+		URI:             string(reqInfo[1]),
+		protocolVersion: strings.ToLower(string(reqInfo[2])),
 		headers:         make(map[string]string),
 	}
 
-	for _, token := range tokens[1:] {
-		if token == "" {
+	bodyPos := 0
+	for i, token := range tokens[1:] {
+		if len(token) == 0 {
+			bodyPos = i + 2
+
+			if parsedReq.method == POST_METHOD {
+				parsedReq.body = bytes.Join(tokens[bodyPos:], []byte("\r\n"))
+			}
+
 			break
 		}
 
-		header := strings.SplitN(token, ":", 2)
+		header := strings.SplitN(string(token), ":", 2)
 		key := strings.ToLower(header[0])
 		key = strings.TrimSpace(key)
 		val := header[1]
@@ -65,58 +77,70 @@ func ansReq(conn net.Conn, req request) {
 	tokens := strings.SplitN(path, "/", 2)
 	pathType := strings.ToLower(tokens[0])
 
-	//fmt.Println(req.URI)
-	//fmt.Println(fmt.Sprintf("path: %s, tokens: %s, its len: %d", path, tokens, len(tokens)))
-
 	if req.method == GET_METHOD {
 		if req.URI == PATH_EMPTY {
-			resp.WriteString(RESPONSE_200)
+			resp.WriteString(RESPONSE_200 + SEP)
 		} else {
 			switch pathType {
 
 			case PATH_ECHO:
-				fmt.Println("echo case")
 				reqData := tokens[1]
-				resp.WriteString("HTTP/1.1 200 OK\r\n")
-				resp.WriteString("Content-Type: text/plain\r\n")
+				resp.WriteString(RESPONSE_200)
+				resp.WriteString("Content-Type: text/plain" + SEP)
 				resp.WriteString("Content-Length: ")
 				resp.WriteString(fmt.Sprint(len(reqData)))
-				resp.WriteString("\r\n\r\n")
+				resp.WriteString(DOUBLE_SEP)
 				resp.WriteString(reqData)
-				resp.WriteString("\r\n\r\n")
+				resp.WriteString(DOUBLE_SEP)
 
 			case PATH_USER_AGENT:
-				fmt.Println("user-agent case")
 				data := req.headers[PATH_USER_AGENT]
-				resp.WriteString("HTTP/1.1 200 OK\r\n")
-				resp.WriteString("Content-Type: text/plain\r\n")
+				resp.WriteString(RESPONSE_200)
+				resp.WriteString("Content-Type: text/plain" + SEP)
 				resp.WriteString("Content-Length: ")
 				resp.WriteString(fmt.Sprint(len(data)))
-				resp.WriteString("\r\n\r\n")
+				resp.WriteString(DOUBLE_SEP)
 				resp.WriteString(data)
-				resp.WriteString("\r\n\r\n")
+				resp.WriteString(DOUBLE_SEP)
 
 			case PATH_FILES:
-				fmt.Println("files case")
 				filename := tokens[1]
 				fileContent, fileExist := findFile(conf.directory, filename)
-				fmt.Println("filename", filename, "conf.directory", conf.directory)
+
 				if fileExist && conf.dirExists {
-					resp.WriteString("HTTP/1.1 200 OK\r\n")
-					resp.WriteString("Content-Type: application/octet-stream\r\n")
+					resp.WriteString(RESPONSE_200)
+					resp.WriteString("Content-Type: application/octet-stream" + SEP)
 					resp.WriteString("Content-Length: ")
 					resp.WriteString(fmt.Sprint(len(fileContent)))
-					resp.WriteString("\r\n\r\n")
+					resp.WriteString(DOUBLE_SEP)
 					resp.WriteString(fileContent)
-					resp.WriteString("\r\n\r\n")
+					resp.WriteString(DOUBLE_SEP)
 				} else {
-					resp.WriteString(RESPONSE_404)
+					resp.WriteString(RESPONSE_404 + SEP)
 				}
 
 			default:
-				fmt.Println("default case")
-				resp.WriteString(RESPONSE_404)
+				resp.WriteString(RESPONSE_404 + SEP)
 			}
+		}
+	}
+
+	if req.method == POST_METHOD {
+		switch pathType {
+		case PATH_FILES:
+			filename := tokens[1]
+
+			err := saveFile(conf.directory, filename, req.body)
+			if err != nil {
+				fmt.Println("Error writing while saving file")
+				resp.WriteString(RESPONSE_404 + SEP)
+				break
+			}
+
+			resp.WriteString(RESPONSE_201 + SEP)
+
+		default:
+			resp.WriteString(RESPONSE_404 + SEP)
 		}
 	}
 
